@@ -11,10 +11,9 @@ This script:
 
 Install required tools (tested with Ubuntu):
 ```
-sudo apt update
-sudo apt install -y nmap python3 python3-pip chromium chromium-driver xsltproc wget
-python3 -m pip install selenium --break-system-packages
+sudo apt-get update && sudo apt-get install -y nmap python3 xsltproc chromium-browser python3-selenium
 ```
+
 ## Installation
 
 Download all required files into a working directory:
