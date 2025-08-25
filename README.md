@@ -1,4 +1,4 @@
-# mScreenshot-WSL
+# mScreenshot-wsl
 A modified version of [cMardikas/mScreenshot](https://github.com/cMardikas/mScreenshot), adapted for **WSL (Windows Subsystem for Linux)**.  
 
 This script:
