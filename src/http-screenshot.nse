@@ -15,8 +15,12 @@
 -- if not, write to the Free Software Foundation, Inc.,
 -- 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
+local shortport = require "shortport"
+local stdnse = require "stdnse"
+local nmap = require "nmap"
+
 description = [[
-Gets a screenshot from the host
+Takes a screenshot of HTTP/HTTPS services and embeds it as Base64 image in Nmap XML.
 ]]
 
 author = "Ryan Wincey"
@@ -24,65 +28,55 @@ license = "GPLv2"
 
 categories = {"default", "discovery", "safe"}
 
--- Updated the NSE Script imports and variable declarations
-local shortport = require "shortport"
-local stdnse = require "stdnse"
-
-local script_path = string.sub(debug.getinfo(1).source, 2, (string.len("http-screenshot.nse") + 2) * -1)
--- local script_path = debug.getinfo(1).source
-stdnse.debug(1, "Script path: %s", script_path)
+portrule = shortport.http
 
 local function base64_encode(data)
-    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
     return ((data:gsub('.', function(x)
-        local r, b = '', x:byte()
-        for i = 8, 1, -1 do r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and '1' or '0') end
+        local r,bits='',x:byte()
+        for i=8,1,-1 do r = r .. (bits % 2^i - bits % 2^(i-1) > 0 and '1' or '0') end
         return r
     end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
         if (#x < 6) then return '' end
-        local c = 0
-        for i = 1, 6 do c = c + (x:sub(i, i) == '1' and 2 ^ (6 - i) or 0) end
-        return b:sub(c + 1, c + 1)
+        local c=0
+        for i=1,6 do c = c + (x:sub(i,i)=='1' and 2^(6-i) or 0) end
+        return b:sub(c+1,c+1)
     end)..({ '', '==', '=' })[#data % 3 + 1])
 end
 
--- Function to read the content of a file
-local function read_file(file_path)
-    local file = io.open(file_path, "rb") -- Open in binary mode
-    if not file then
-        return nil, "Unable to open file"
-    end
-    local content = file:read("*all")
-    file:close()
-    return content
+local function read_file(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local c = f:read("*all")
+    f:close()
+    return c
 end
 
-portrule = shortport.http
-
 action = function(host, port)
-	
-	-- Execute the shell command python screenshot.py 
-	local cmd = 'python3 "' .. script_path .. package.config:sub(1,1) .. 'screenshot.py" -u ' .. host.ip .. " -p " .. port.number	
+
+    local script_dir = stdnse.get_script_args("scriptdir")
+    if not script_dir then
+      return stdnse.format_output(false, "Viga: 'scriptdir' argument on puudu. Palun edasta see nmap'i käsuga.")
+    end
+    local screenshot_py = script_dir .. "/screenshot.py"
+
+    local outdir = stdnse.get_script_args("outdir") or script_dir .. "/scan-results"
+    os.execute("mkdir -p " .. outdir)
+
+    local outfile = string.format("%s_%d.png", host.ip, port.number)
+    local file_path = outdir .. "/" .. outfile
+
+	local cmd = string.format("/usr/bin/python3 %s -u %s -p %d -o %s > /dev/null 2>&1",
+		screenshot_py, host.ip, port.number, file_path)
 	local ret = os.execute(cmd)
 
-		local file_path = script_path .. host.ip .. '_' .. port.number .. '.png'
+	local data = read_file(file_path)
+    if not data then
+        return stdnse.format_output(false, "Screenshot missing: " .. file_path)
+    end
 
-		-- Read the file content
-    		local file_content, err = read_file(file_path)
-    		
-		if not file_content then
-        		return stdnse.format_output(false, "Error reading file: " .. err)
-    		end
-    
-        	stdnse.print_debug(1, "File content length: %d", #file_content)
+    local b64 = base64_encode(data)
+    local img = '<img src="data:image/png;base64,' .. b64 .. '" width="300"/>'
 
-		-- Encode the file content to Base64 
-		local encoded_content = base64_encode(file_content)
-		stdnse.print_debug(1, "Encoded content length: %d", #encoded_content)
-		stdnse.print_debug(1, "Encoded content (first 100 chars): %s", encoded_content:sub(1, 100))
-
-    		-- Construct the output
-    		local output = '<img src="data:image/png;base64,' .. encoded_content .. '"/>' .. '\n' 
-    		
-		return true,output
+    return stdnse.format_output(true, img)
 end
