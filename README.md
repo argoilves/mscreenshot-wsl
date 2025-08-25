@@ -27,7 +27,7 @@ wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/main/screenshot
 wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/main/nmap-bootstrap.xsl
 wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/main/run-scan.sh
 
-chmod +x run-scan.sh
+chmod +x run.sh
 ```
 
 ## Usage
