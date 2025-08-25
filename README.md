@@ -22,10 +22,10 @@ Download all required files into a working directory:
 ```
 mkdir ~/mscreenshot-wsl && cd ~/mscreenshot-wsl
 
-wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/main/http-screenshot.nse
-wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/main/screenshot.py
-wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/main/nmap-bootstrap.xsl
-wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/main/run-scan.sh
+wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/refs/heads/main/src/http-screenshot.nse
+wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/refs/heads/main/src/screenshot.py
+wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/refs/heads/main/src/nmap-bootstrap.xsl
+wget https://raw.githubusercontent.com/argoilves/mscreenshot-wsl/refs/heads/main/src/run.sh
 
 chmod +x run.sh
 ```
@@ -35,7 +35,7 @@ chmod +x run.sh
 ### Option 1: Interactive script (recommended)
 
 ```
-./run-scan.sh
+run.sh
 ```
 
 The script will:
@@ -53,13 +53,13 @@ cd "$SCAN_DIR"
 ```
 Scan network:
 ```
-sudo nmap --script=$HOME/mscreenshot-/ -sS -sV -n -v \
+sudo nmap --script=$HOME/mscreenshot-wsl/ -sS -sV -n -v \
   --defeat-rst-ratelimit --host-timeout 600s --stats-every 10s \
   -oA scan 192.168.1.0/24
 ```
 Generate HTML raport:
 ```
-xsltproc -o report.html ~/mscreenshot/nmap-bootstrap.xsl scan.xml
+xsltproc -o report.html ~/mscreenshot-wsl/nmap-bootstrap.xsl scan.xml
 ```
 To open the report in Chrome (Windows):
 ```
@@ -83,42 +83,52 @@ sudo nmap --script=$HOME/mscreenshot-wsl/http-screenshot.nse -sS -sV -n -v \
 ```
 --script=$HOME/mscreenshot-wsl/http-screenshot.nse
 ```
+
 `-sS`	TCP SYN Scan. This is a fast and stealthy scan type. It sends a SYN packet to each target port and waits for a SYN/ACK response to determine if the port is open without completing the full TCP handshake.	
 ```
 -sS
 ```
+
 `-sV`	Version Detection. This flag attempts to determine the service and version of the applications running on open ports. It's crucial for our script as it helps identify HTTP/HTTPS services.	
 ```
 -sV
 ```
+
 `-n`	No DNS Resolution. Using this flag tells Nmap not to perform reverse DNS lookups on the target IPs. This significantly speeds up the scan, which is particularly useful for large network ranges.	
 ```
 -n
 ```
+
 `-v`	Verbose Output. This increases the verbosity level, providing real-time feedback on the scan's progress. It's helpful for monitoring the scan, especially on slow networks.	
 ```
 -v
 ```
+
 `--defeat-rst-ratelimit`	Some firewalls limit the rate at which they send RST packets. This option helps Nmap avoid being blocked by these limits, ensuring a more accurate scan.	
 ```
 --defeat-rst-ratelimit
 ```
+
 `--host-timeout`	Sets a maximum amount of time Nmap will spend scanning a single host. If a host takes too long, it will be skipped, preventing the scan from getting stuck on an unresponsive target.	
 ```
 --host-timeout 600s
 ```
+
 `--stats-every`	Prints a status update every specified amount of time. This provides visibility into the scan's progress without requiring verbose output.	
 ```
 --stats-every 10s
 ```
+
 `-oA`	Output All Formats. This is a shortcut to save the scan results in three formats: normal (.nmap), XML (.xml), and Grepable (.gnmap). The XML file is what our script uses to generate the HTML report.	
 ```
 -oA scan
 ```
+
 `192.168.1.0/24`	Target Specification. This is the IP address, host, or network range you want to scan. You can use different formats like a single IP (192.168.1.1), a range (192.168.1.10-20), a subnet (192.168.1.0/24), or a file list (-iL targets.txt).	
 ```
 192.168.1.0/24
 ```
+
 #### Quick Scan of a Single IP
 This is a fast scan focused on common web ports on a specific host.
 ```
@@ -126,6 +136,7 @@ sudo nmap --script=$HOME/mscreenshot-wsl/http-screenshot.nse -sS -sV -n -v \
   --defeat-rst-ratelimit --host-timeout 60s --stats-every 5s \
   -p 80,443,8080 -oA scan 192.168.1.1
 ```
+
 #### Comprehensive Scan of a Full Network
 This command scans all 65,535 TCP ports on an entire network segment. Be aware that this will take a long time to complete.
 ```
@@ -133,4 +144,9 @@ sudo nmap --script=$HOME/mscreenshot-wsl/http-screenshot.nse -sS -sV -n -v \
   --defeat-rst-ratelimit --host-timeout 900s --stats-every 60s \
   -p 1-65535 -oA scan 192.168.1.0/24
 ```
-After running your desired Nmap command, proceed with the final step to generate the HTML report.
+After running your desired Nmap command, proceed with the final step to generate the HTML report:
+Generate HTML raport:
+```
+xsltproc -o report.html ~/mscreenshot-wsl/nmap-bootstrap.xsl scan.xml
+```
+Raport will be saved to the working directory.
