@@ -1,4 +1,30 @@
 #!/bin/bash
+set -e
 
-sudo nmap --script=/home/neo/sc/ -sV -n -v --defeat-rst-ratelimit --host-timeout 600s --stats-every 10s -oA report -d 192.168.0.0/24
-xsltproc -o report.html nmap-bootstrap.xsl report.xml
+read -p "Target (nt 192.168.1.1): " TARGET
+[ -z "$TARGET" ] && { echo "Error: Target missing!"; exit 1; }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCAN_DIR="$SCRIPT_DIR/scan-results-$(date +%Y%m%d-%H%M)"
+mkdir -p "$SCAN_DIR"
+
+echo "[*] Starting Nmap: $TARGET"
+
+sudo nmap --script="$SCRIPT_DIR/http-screenshot.nse" \
+    --script-args "outdir=$SCAN_DIR,scriptdir=$SCRIPT_DIR" \
+    -sS -sV -n -v "$TARGET" \
+    -oA "$SCAN_DIR/scan" 
+
+echo "[*] Generating HTML report"
+
+xsltproc -o "$SCAN_DIR/report.html" "$SCRIPT_DIR/nmap-bootstrap.xsl" "$SCAN_DIR/scan.xml"
+
+echo "[*] Reprot: $SCAN_DIR/report.html"
+
+# Ava raport, kui WSL/Windows
+CHROME="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+if [ -f "$CHROME" ]; then
+    "$CHROME" "$(wslpath -w "$SCAN_DIR/report.html")"
+else
+    echo "[!] Open report: $SCAN_DIR/report.html"
+fi
