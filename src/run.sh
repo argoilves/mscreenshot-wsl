@@ -19,12 +19,12 @@ echo "[*] Generating HTML report"
 
 xsltproc -o "$SCAN_DIR/report.html" "$SCRIPT_DIR/nmap-bootstrap.xsl" "$SCAN_DIR/scan.xml"
 
-echo "[*] Reprot: $SCAN_DIR/report.html"
+echo "[*] Report: $SCAN_DIR/report.html"
 
-# Ava raport, kui WSL/Windows
-CHROME="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
-if [ -f "$CHROME" ]; then
-    "$CHROME" "$(wslpath -w "$SCAN_DIR/report.html")"
+if command -v chromium >/dev/null 2>&1; then
+    chromium "$SCAN_DIR/report.html" >/dev/null 2>&1 &
+elif [ -f "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" ]; then
+    "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" "$(wslpath -w "$SCAN_DIR/report.html")" &
 else
     echo "[!] Open report: $SCAN_DIR/report.html"
 fi
