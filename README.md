@@ -34,6 +34,7 @@ chmod +x run.sh
 ### Option 1: Interactive script (recommended)
 
 ```
+cd ~/mscreenshot-wsl
 ./run.sh
 ```
 
