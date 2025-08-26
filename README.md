@@ -34,7 +34,7 @@ chmod +x run.sh
 ### Option 1: Interactive script (recommended)
 
 ```
-run.sh
+./run.sh
 ```
 
 The script will:
