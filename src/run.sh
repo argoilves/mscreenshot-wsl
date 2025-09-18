@@ -10,7 +10,7 @@ mkdir -p "$SCAN_DIR"
 
 echo "[*] Starting Nmap: $TARGET"
 
-sudo nmap --script="vulners,$SCRIPT_DIR/http-screenshot.nse" \
+sudo nmap --script="$SCRIPT_DIR/http-screenshot.nse" \
     --script-args "outdir=$SCAN_DIR,scriptdir=$SCRIPT_DIR" \
     -sS -sV -n -v "$TARGET" \
     -oA "$SCAN_DIR/scan" 
