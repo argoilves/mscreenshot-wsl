@@ -318,61 +318,6 @@ static int detect_local_ips(char *out, size_t outsz, const char *extra) {
     return count;
 }
 
-// Best-effort: disable segmentation/receive offloads on every active
-// non-loopback interface before the scan. TSO/GSO let the kernel hand huge
-// buffers to the NIC (or software layer) to split into on-the-wire segments,
-// and GRO merges inbound packets before they reach userspace — great for
-// throughput, but they can mangle nmap's hand-crafted SYN packets and its
-// view of replies, causing false negatives. Silently skipped if ethtool is
-// missing or the call fails (e.g. virtual interfaces that don't support it).
-static int disable_offloads(char *out, size_t outsz) {
-    out[0] = '\0';
-    if (!check_command("ethtool")) return 0;
-
-    struct ifaddrs *ifa = NULL;
-    if (getifaddrs(&ifa) != 0) return 0;
-
-    // Collect unique interface names (getifaddrs lists one entry per address).
-    char seen[16][IFNAMSIZ];
-    int seen_count = 0;
-    size_t pos = 0;
-    int touched = 0;
-
-    for (struct ifaddrs *p = ifa; p; p = p->ifa_next) {
-        if (!p->ifa_name) continue;
-        if (!p->ifa_addr) continue;
-        if (p->ifa_addr->sa_family != AF_INET) continue;
-        if (!(p->ifa_flags & IFF_UP)) continue;
-        if (p->ifa_flags & IFF_LOOPBACK) continue;
-
-        bool dup = false;
-        for (int j = 0; j < seen_count; j++) {
-            if (strcmp(seen[j], p->ifa_name) == 0) { dup = true; break; }
-        }
-        if (dup) continue;
-        if (seen_count >= (int)(sizeof(seen) / sizeof(seen[0]))) break;
-        snprintf(seen[seen_count++], IFNAMSIZ, "%s", p->ifa_name);
-
-        // One call sets all three in a single kernel round-trip. ethtool
-        // returns non-zero if ANY requested feature is unsupported on the
-        // interface, so we still count this as a success when the command
-        // completes normally — individual features are silently ignored.
-        char cmd[256];
-        snprintf(cmd, sizeof(cmd),
-                 "ethtool -K %s tso off gso off gro off >/dev/null 2>&1",
-                 p->ifa_name);
-        if (system(cmd) == 0) {
-            int n = snprintf(out + pos, outsz - pos, "%s%s",
-                             pos == 0 ? "" : ",", p->ifa_name);
-            if (n > 0 && (size_t)n < outsz - pos) {
-                pos += (size_t)n;
-                touched++;
-            }
-        }
-    }
-    freeifaddrs(ifa);
-    return touched;
-}
 
 // Fork/exec nmap with the given argv, inherit stdio, wait for it, return 0 on
 // clean exit or 1 on any failure. argv[0] must be "nmap" and argv must end in
@@ -508,8 +453,6 @@ static int run_scan(const char *target, const char *extra_exclude) {
 
     // Turn off TSO/GSO/GRO on all non-loopback interfaces so nmap's crafted
     // SYN packets aren't merged/split by the NIC or kernel offload layer.
-    char off_ifaces[512];
-    int off_count = disable_offloads(off_ifaces, sizeof(off_ifaces));
 
     // Temp file for the pass-1 greppable output — small, parsed, then deleted.
     char discovery[512];
@@ -521,9 +464,8 @@ static int run_scan(const char *target, const char *extra_exclude) {
     printf("  output      : %s\n", s_report_html);
     if (exc_count > 0)
         printf("  exclude     : %s\n", exclude);
-    if (off_count > 0)
-        printf("  offloads    : tso/gso/gro off on %s\n", off_ifaces);
-    printf("  strategy    : two-pass (discovery @ 10k pps -> version+screenshots)\n");
+    printf("  offloads    : unchanged\n");
+    printf("  strategy    : two-pass (bounded discovery -> version+screenshots)\n");
     printf("\n");
 
     // --------------------------------------------------------------------
@@ -540,6 +482,7 @@ static int run_scan(const char *target, const char *extra_exclude) {
         argv[i++] = "nmap";
         argv[i++] = "-sS";
         argv[i++] = "-p-";
+        argv[i++] = "--exclude-ports"; argv[i++] = "515,631,9100-9107";
         argv[i++] = "-n";
         argv[i++] = "-vv";
         // Pass 1 is pure discovery — we re-probe matched ports in pass 2,
@@ -547,15 +490,12 @@ static int run_scan(const char *target, const char *extra_exclude) {
         // limits; --min-rate forces nmap to keep the packet rate high;
         // --max-rtt-timeout stops us waiting 1.25s on every filtered port;
         // --min-parallelism/--min-hostgroup fire more probes in parallel.
-        argv[i++] = "-T5";
+        argv[i++] = "-T3";
         argv[i++] = "--open";
         argv[i++] = "--reason";
         argv[i++] = "--defeat-rst-ratelimit";
-        argv[i++] = "--min-rate";         argv[i++] = "10000";
-        argv[i++] = "--max-rtt-timeout";  argv[i++] = "500ms";
-        argv[i++] = "--min-parallelism";  argv[i++] = "256";
-        argv[i++] = "--min-hostgroup";    argv[i++] = "64";
-        argv[i++] = "--max-retries";      argv[i++] = "1";
+        argv[i++] = "--max-rate";         argv[i++] = "100";
+        argv[i++] = "--max-retries";      argv[i++] = "2";
         argv[i++] = "--stats-every";      argv[i++] = "10s";
         if (exclude[0]) {
             argv[i++] = "--exclude";
@@ -615,9 +555,9 @@ static int run_scan(const char *target, const char *extra_exclude) {
     fflush(stdout);
 
     {
-        char script_arg[4096];
+        char script_arg[4160];
         char script_args[4200];
-        snprintf(script_arg,  sizeof(script_arg),  "--script=%s/", scripts_dir);
+        snprintf(script_arg,  sizeof(script_arg),  "--script=%s/http-screenshot.nse", scripts_dir);
         snprintf(script_args, sizeof(script_args), "screenshot_dir=%s", shots_dir);
 
         // Tokenise hosts_list (space-separated) into argv entries. It's
@@ -644,10 +584,12 @@ static int run_scan(const char *target, const char *extra_exclude) {
         argv[i++] = "--script-args"; argv[i++] = script_args;
         argv[i++] = "-sS";
         argv[i++] = "-sV";
-        argv[i++] = "--version-intensity"; argv[i++] = "7";
+        argv[i++] = "--version-intensity"; argv[i++] = "2";
+        argv[i++] = "--exclude-ports"; argv[i++] = "515,631,9100-9107";
+        argv[i++] = "--max-rate"; argv[i++] = "100";
         argv[i++] = "-n";
         argv[i++] = "-vv";
-        argv[i++] = "-T4";
+        argv[i++] = "-T3";
         argv[i++] = "-Pn";                        // already confirmed alive
         argv[i++] = "--open";
         argv[i++] = "--reason";
@@ -886,4 +828,3 @@ int main(int argc, char **argv) {
     printf("\n");
     return rc;
 }
-
