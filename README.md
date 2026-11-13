@@ -222,3 +222,13 @@ curl -k https://127.0.0.1:8843/  # real secure landing
 ## License
 
 MIT
+# Lynx launcher for Kali
+
+Install the interactive launcher for the current user:
+
+```bash
+mkdir -p ~/.local/bin
+install -m 755 scripts/lynx-mscreenshot ~/.local/bin/lynx-mscreenshot
+```
+
+It uses the installed binary at `/opt/mScreenshot/mScreenshot` and stores each run in its own directory. New PNGs are copied beside the report. At the end choose **A** to open the local directory or **B** to copy the bundle to the mounted `/media/sf_KALI_shared` and open the copy. The Windows side of the Lynx share is `C:\KALI_shared`.

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'mScreenshot — oma või volitatud labor\nSee on aktiivne võrgukontroll. Printerite püsivara vajab eraldi kontrolli.\n\n'
+read -r -p 'Siht IPv4 või CIDR (nt 192.168.56.10): ' target
+python3 -c 'import ipaddress,sys; value=ipaddress.ip_network(sys.argv[1], strict=False); assert value.version == 4' "$target" || { printf 'Vigane IPv4/CIDR.\n'; exit 1; }
+read -r -p 'Välistatud IPv4/CIDR-id komadega (Enter = puuduvad): ' exclusions
+if [[ -n "$exclusions" ]]; then
+    python3 -c 'import ipaddress,sys; values=sys.argv[1].split(","); assert all(ipaddress.ip_network(value.strip(), strict=False).version == 4 for value in values)' "$exclusions" || exit 1
+fi
+read -r -p 'Katse lühinimi: ' description
+result_dir=$(mktemp -d "$HOME/mScreenshot-results-$(date +%Y%m%d-%H%M%S)-XXXXXX")
+chmod 700 "$result_dir"
+cd "$result_dir"
+printf '\nSiht: %s\nTulemused: %s\nKatkestamine: Ctrl+C\n' "$target" "$result_dir"
+arguments=(-d "$description")
+[[ -z "$exclusions" ]] || arguments+=(-e "$exclusions")
+started=$(mktemp "$result_dir/.started-XXXXXX")
+set +e
+sudo /opt/mScreenshot/mScreenshot "${arguments[@]}" "$target"
+result=$?
+set -e
+shots_dir=/opt/mScreenshot/screenshots
+if [[ -d "$shots_dir" ]]; then
+    while IFS= read -r -d '' screenshot; do
+        mkdir -p "$result_dir/screenshots"
+        cp -- "$screenshot" "$result_dir/screenshots/" ||
+            printf 'Pildi kopeerimine ebaõnnestus: %s\n' "$screenshot"
+    done < <(find "$shots_dir" -maxdepth 1 -type f -name '*.png' -newer "$started" -print0)
+fi
+rm -- "$started"
+shopt -s nullglob
+reports=("$result_dir"/*.html)
+if (( ${#reports[@]} )); then
+    sed -i -e 's|file:///opt/mScreenshot/screenshots/|screenshots/|g' \
+           -e 's|/opt/mScreenshot/screenshots/|screenshots/|g' "${reports[@]}" ||
+        printf 'Raporti pildiviiteid ei õnnestunud uuendada.\n'
+fi
+screenshots=("$result_dir"/screenshots/*.png)
+printf 'Katsekaustas PNG-pilte: %s\n' "${#screenshots[@]}"
+printf '\nLõppkood: %s\nTulemused: %s\n' "$result" "$result_dir"
+shared_dir=/media/sf_KALI_shared
+printf '\nA) Ava tulemuste kaust\nB) Kopeeri kausta %s (Windows: C:\\KALI_shared) ja ava koopia\nEnter) Lõpeta\n' "$shared_dir"
+while read -r -p 'Valik [A/B]: ' action; do
+    case "$action" in
+    [aA])
+        xdg-open "$result_dir" </dev/null || printf 'Ava failihalduris: %s\n' "$result_dir"
+        ;;
+    [bB])
+        if ! mountpoint -q "$shared_dir"; then
+            printf 'Jagatud kaust pole ühendatud: %s\n' "$shared_dir"
+        elif export_dir=$(mktemp -d "$shared_dir/${result_dir##*/}-XXXXXX"); then
+            if cp -R -- "$result_dir/." "$export_dir/"; then
+                printf 'Windowsis: C:\\KALI_shared\\%s\n' "${export_dir##*/}"
+                xdg-open "$export_dir" </dev/null || printf 'Ava failihalduris: %s\n' "$export_dir"
+            else
+                printf 'Kopeerimine jäi pooleli: %s\nOriginaal: %s\n' "$export_dir" "$result_dir"
+            fi
+        else
+            printf 'Sihtkausta loomine ebaõnnestus: %s\n' "$shared_dir"
+        fi
+        ;;
+    '') break ;;
+    *) printf 'Vali A, B või Enter.\n' ;;
+    esac
+done
+exit "$result"
